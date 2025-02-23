@@ -31,7 +31,7 @@ clear
 source /var/lib/crot/ipvps.conf
 domain=${IP2:-$(cat /etc/xray/domain)}
 IP=$(curl -4 -s https://checkip.amazonaws.com)
-sstp=$(grep 'port' /etc/accel-ppp.conf | awk '{print $2}')
+sstp=$(grep 'port' /etc/accel-ppp.conf | cut -d'=' -f2)
 if [[ -z "$sstp" ]]; then
     sstp="Tidak ditemukan"
 fi

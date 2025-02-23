@@ -31,7 +31,10 @@ clear
 source /var/lib/crot/ipvps.conf
 domain=${IP2:-$(cat /etc/xray/domain)}
 IP=$(curl -4 -s https://checkip.amazonaws.com)
-sstp=$(grep -i SSTP ~/log-install.txt | cut -d: -f2 | sed 's/ //g')
+sstp=$(grep 'port' /etc/accel-ppp.conf | awk '{print $2}')
+if [[ -z "$sstp" ]]; then
+    sstp="Tidak ditemukan"
+fi
 
 # Input pengguna baru
 until [[ $user =~ ^[a-zA-Z0-9_]+$ && $CLIENT_EXISTS -eq 0 ]]; do

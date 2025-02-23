@@ -10,6 +10,10 @@ CYAN='\033[0;36m'
 LIGHT='\033[0;37m'
 NC='\033[0m'
 
+LOG_FILE="/var/log/sstp_install.log"
+exec 2> >(tee -a "$LOG_FILE" >&2)  # Redirect stderr to log file
+
+
 # Banner
 clear
 echo -e "${CYAN}"
@@ -64,16 +68,23 @@ organizationalunit="enveepay"
 commonname="enveepay.games"
 email="muhamadsyabaini@gmail.com"
 
+# Function to show progress
+progress() {
+    local PERCENT=$1
+    echo -ne "${BLUE}🔄 Installation Progress: ${PERCENT}%\r${NC}"
+}
+
 # Function to install dependencies
 install_packages() {
     echo -e "${BLUE}📦 Installing dependencies...${NC}"
-    apt-get update
-    apt-get install -y build-essential cmake gcc linux-headers-$(uname -r) git \
-        libpcre3-dev libssl-dev liblua5.1-0-dev ppp netfilter-persistent || {
-        echo -e "${RED}❌ Failed to install dependencies!${NC}"
+    apt-get update && apt-get install -y build-essential cmake gcc linux-headers-$(uname -r) git \
+        libpcre2-dev libssl-dev liblua5.1-0-dev ppp netfilter-persistent || {
+        echo -e "${RED}❌ Failed to install dependencies!${NC}" | tee -a "$LOG_FILE"
         exit 1
     }
+    progress 20
 }
+
 
 # Install SSTP
 install_sstp() {
@@ -84,10 +95,13 @@ install_sstp() {
 
     cmake -DBUILD_IPOE_DRIVER=TRUE -DBUILD_VLAN_MON_DRIVER=TRUE \
         -DCMAKE_INSTALL_PREFIX=/usr -DKDIR=/usr/src/linux-headers-$(uname -r) \
-        -DLUA=TRUE -DCPACK_TYPE=$DISTRO ..
+        -DLUA=TRUE -DCPACK_TYPE=$DISTRO .. || {
+        echo -e "${RED}❌ Failed to configure SSTP build!${NC}" | tee -a "$LOG_FILE"
+        exit 1
+    }
 
     make && cpack -G DEB && dpkg -i accel-ppp.deb || {
-        echo -e "${RED}❌ Failed to build SSTP VPN!${NC}"
+        echo -e "${RED}❌ Failed to build SSTP VPN!${NC}" | tee -a "$LOG_FILE"
         exit 1
     }
 
@@ -97,6 +111,7 @@ install_sstp() {
     chmod +x /etc/accel-ppp.conf
 
     systemctl enable --now accel-ppp
+    progress 50
 }
 
 # Generate SSL Certificates
@@ -114,6 +129,8 @@ generate_certificates() {
 
     openssl x509 -req -days 3650 -in ia.csr -CA ca.crt -CAkey ca.key -set_serial 01 -out server.crt
     cp server.crt /home/vps/public_html/server.crt
+
+    progress 70
 }
 
 # Configure Firewall Rules
@@ -124,6 +141,8 @@ configure_firewall() {
     iptables-save > /etc/iptables.up.rules
     netfilter-persistent save > /dev/null
     netfilter-persistent reload > /dev/null
+
+    progress 85
 }
 
 # Download SSTP Scripts
@@ -133,6 +152,8 @@ download_scripts() {
         wget -O /usr/bin/$script "$REPO_URL/$script.sh"
         chmod +x /usr/bin/$script
     done
+
+    progress 100
 }
 
 # Run all functions

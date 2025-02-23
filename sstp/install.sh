@@ -105,10 +105,19 @@ install_sstp() {
         exit 1
     }
 
-    mv /etc/accel-ppp.conf.dist /etc/accel-ppp.conf
+    # Rename hanya jika file ada
+    if [ -f /etc/accel-ppp.conf.dist ]; then
+        mv /etc/accel-ppp.conf.dist /etc/accel-ppp.conf
+    fi
+
+    # Unduh file dari repositori
     wget -O /etc/accel-ppp.conf "$REPO_URL/accel.conf"
-    sed -i "s/xxxxxxxxx/$MYIP/g" /etc/accel-ppp.conf
-    chmod +x /etc/accel-ppp.conf
+
+    # Edit konfigurasi hanya jika file berhasil diunduh
+    if [ -f /etc/accel-ppp.conf ]; then
+        sed -i "s/xxxxxxxxx/$MYIP/g" /etc/accel-ppp.conf
+        chmod +x /etc/accel-ppp.conf
+    fi
 
     systemctl enable --now accel-ppp
     progress 50

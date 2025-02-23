@@ -54,3 +54,52 @@ systemctl start accel-ppp systemctl enable accel-ppp
 
 echo -e "${GREEN}SSTP VPN Setup Completed!${NC}\n"
 
+echo -e "${YELLOW}==============================${NC}"
+echo -e "${BLUE}        GENERATE CERT         ${NC}"
+echo -e "${YELLOW}==============================${NC}"
+cd /home/sstp
+echo -e "${GREEN}Membuat kunci CA...${NC}"
+openssl genrsa -out ca.key 4096
+
+echo -e "${GREEN}Membuat sertifikat CA...${NC}"
+openssl req -new -x509 -days 3650 -key ca.key -out ca.crt \
+-subj "/C=$country/ST=$state/L=$locality/O=$organization/OU=$organizationalunit/CN=$commonname/emailAddress=$email"
+
+echo -e "${GREEN}Membuat private key untuk server...${NC}"
+openssl genrsa -out server.key 4096
+
+echo -e "${GREEN}Membuat permintaan sertifikat (CSR)...${NC}"
+openssl req -new -key server.key -out ia.csr \
+-subj "/C=$country/ST=$state/L=$locality/O=$organization/OU=$organizationalunit/CN=$commonname/emailAddress=$email"
+
+echo -e "${GREEN}Menandatangani sertifikat server dengan CA...${NC}"
+openssl x509 -req -days 3650 -in ia.csr -CA ca.crt -CAkey ca.key -set_serial 01 -out server.crt
+
+echo -e "${GREEN}Menyalin sertifikat ke direktori web...${NC}"
+cp /home/sstp/server.crt /home/vps/public_html/server.crt
+
+echo -e "${YELLOW}==============================${NC}"
+echo -e "${BLUE}    KONFIGURASI FIREWALL      ${NC}"
+echo -e "${YELLOW}==============================${NC}"
+iptables -I INPUT -m state --state NEW -m tcp -p tcp --dport 444 -j ACCEPT
+iptables -I INPUT -m state --state NEW -m udp -p udp --dport 444 -j ACCEPT
+iptables-save > /etc/iptables.up.rules
+iptables-restore -t < /etc/iptables.up.rules
+netfilter-persistent save > /dev/null
+netfilter-persistent reload > /dev/null
+
+echo -e "${GREEN}Firewall telah dikonfigurasi.${NC}"
+
+echo -e "${YELLOW}==============================${NC}"
+echo -e "${BLUE}    MENGUNDUH SKRIP SSTP      ${NC}"
+echo -e "${YELLOW}==============================${NC}"
+wget -O /usr/bin/addsstp https://${akbarvpn}/addsstp.sh && chmod +x /usr/bin/addsstp
+wget -O /usr/bin/delsstp https://${akbarvpn}/delsstp.sh && chmod +x /usr/bin/delsstp
+wget -O /usr/bin/ceksstp https://${akbarvpn}/ceksstp.sh && chmod +x /usr/bin/ceksstp
+wget -O /usr/bin/renewsstp https://${akbarvpn}/renewsstp.sh && chmod +x /usr/bin/renewsstp
+
+echo -e "${GREEN}Semua skrip SSTP berhasil diunduh dan diberikan izin eksekusi.${NC}"
+
+echo -e "${RED}Menghapus skrip instalasi...${NC}"
+rm -f /root/sstp.sh
+echo -e "${GREEN}Instalasi selesai!${NC}"

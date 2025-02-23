@@ -30,7 +30,7 @@ fi
 clear
 source /var/lib/crot/ipvps.conf
 domain=${IP2:-$(cat /etc/xray/domain)}
-IP=$(wget -qO- ipinfo.io/ip)
+IP=$(curl -4 -s https://checkip.amazonaws.com)
 sstp=$(grep -i SSTP ~/log-install.txt | cut -d: -f2 | sed 's/ //g')
 
 # Input pengguna baru

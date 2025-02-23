@@ -129,7 +129,7 @@ configure_firewall() {
 # Download SSTP Scripts
 download_scripts() {
     echo -e "${BLUE}📥 Downloading SSTP scripts...${NC}"
-    for script in addsstp delsstp ceksstp renewsstp; do
+    for script in add del list renew uninstall; do
         wget -O /usr/bin/$script "$REPO_URL/$script.sh"
         chmod +x /usr/bin/$script
     done

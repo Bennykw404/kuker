@@ -128,6 +128,7 @@ generate_certificates() {
         -subj "/C=$country/ST=$state/L=$locality/O=$organization/OU=$organizationalunit/CN=$commonname/emailAddress=$email"
 
     openssl x509 -req -days 3650 -in ia.csr -CA ca.crt -CAkey ca.key -set_serial 01 -out server.crt
+    mkdir -p /home/vps/public_html
     cp server.crt /home/vps/public_html/server.crt
 
     progress 70

@@ -75,7 +75,7 @@ fi
 
 # Menentukan base IP dari alamat IPv4 server
 BASE_IP=$(echo "$SERVER_WG_IPV4" | awk -F '.' '{ print $1"."$2"."$3 }')
-DOT_IP=1 
+DOT_IP=2 
 until [[ ${IPV4_EXISTS} == '0' ]]; do
     CLIENT_WG_IPV4="${BASE_IP}.${DOT_IP}"
     IPV4_EXISTS=$(grep -c "$CLIENT_WG_IPV4/32" "/etc/wireguard/${SERVER_WG_NIC}.conf")
@@ -87,7 +87,7 @@ until [[ ${IPV4_EXISTS} == '0' ]]; do
 done
 
 BASE_IP=$(echo "$SERVER_WG_IPV6" | awk -F '::' '{ print $1 }')
-DOT_IP=1
+DOT_IP=2
 until [[ ${IPV6_EXISTS} == '0' ]]; do
     CLIENT_WG_IPV6="${BASE_IP}::${DOT_IP}"
     IPV6_EXISTS=$(grep -c "${CLIENT_WG_IPV6}/128" "/etc/wireguard/${SERVER_WG_NIC}.conf")

@@ -31,7 +31,7 @@ fi
 
 # ==========================================
 # Link Hosting Script
-WIREGUARD_REPO="https://raw.githubusercontent.com/Bennykw404/kuker/main/wireguard"
+WIREGUARD_REPO="https://raw.githubusercontent.com/Bennykw404/kuker/refs/heads/main/wireguard"
 
 # Cek OS
 if [[ -f /etc/os-release ]]; then

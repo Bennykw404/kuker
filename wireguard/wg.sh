@@ -53,7 +53,7 @@ if [[ -f /etc/os-release ]]; then
         echo -e "OS tidak didukung ❌"
         exit 1
     fi
-
+fi
 
 # Cek jika WireGuard sudah terinstal
 if [[ -f /etc/wireguard/params ]]; then

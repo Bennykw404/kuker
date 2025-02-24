@@ -11,14 +11,16 @@ YELLOW='\033[0;33m'
 LIGHT='\033[0;37m'
 
 # 🔹 Mendapatkan IP Server
-MYIP=$(curl -4 -s https://checkip.amazonaws.com)
+MYIP=$(ip -4 addr | sed -ne 's|^.* inet \([^/]*\)/.* scope global.*$|\1|p' | awk '{print $1}' | head -1)
 
 echo -e "${CYAN}🔍 Checking VPS..."
-if [[ -z "$MYIP" ]]; then
+IZIN=$(ip -4 addr | sed -ne 's|^.* inet \([^/]*\)/.* scope global.*$|\1|p' | awk '{print $1}' | head -1 | grep $MYIP)
+
+if [ "$MYIP" = "$MYIP" ]; then
+    echo -e "${GREEN}✅ Permission Accepted...${NC}"
+else
     echo -e "${RED}❌ Permission Denied!${NC}"
     exit 1
-else
-    echo -e "${GREEN}✅ Permission Accepted...${NC}"
 fi
 
 clear
@@ -27,28 +29,79 @@ source /etc/wireguard/params
 source /var/lib/crot/ipvps.conf
 
 # 🔹 Menentukan IP Publik
-SERVER_PUB_IP=${IP2:-$(curl -4 -s https://checkip.amazonaws.com)}
-portwg=$(awk -F' = ' '/ListenPort/ {print $2}' /etc/wireguard/wg0.conf)
+if [[ -z "$IP" ]]; then
+    SERVER_PUB_IP=$(ip -4 addr show | sed -ne 's|^.* inet \([^/]*\)/.* scope global.*$|\1|p' | awk 'NR==1 {print $1}')
+else
+    SERVER_PUB_IP=$IP
+fi
+
+if [[ -z "$IP2" ]]; then
+    domain=$(cat /etc/xray/domain)
+else
+    domain=$IP2
+fi
+
+
+echo ""
+portwg=$(grep "ListenPort" /etc/wireguard/${SERVER_WG_NIC}.conf | awk -F' = ' '{print $2}')
 
 # 🔹 Input Username
-while :; do
-    read -rp "👤 Username: " CLIENT_NAME
-    [[ $CLIENT_NAME =~ ^[a-zA-Z0-9_]+$ ]] || { echo -e "${RED}⚠️ Gunakan karakter alfanumerik saja!${NC}"; continue; }
-    grep -qw "$CLIENT_NAME" /etc/wireguard/wg0.conf || break
-    echo -e "⚠️ Username ${RED}$CLIENT_NAME${NC} sudah ada, silakan pilih yang lain."
+until [[ ${CLIENT_NAME} =~ ^[a-zA-Z0-9_]+$ && ${CLIENT_EXISTS} == '0' ]]; do
+    read -rp "👤 Username: " -e CLIENT_NAME
+    CLIENT_EXISTS=$(grep -w $CLIENT_NAME /etc/wireguard/${SERVER_WG_NIC}.conf | wc -l)
+
+    if [[ ${CLIENT_EXISTS} == '1' ]]; then
+        echo -e "⚠️ Username ${RED}$CLIENT_NAME${NC} sudah ada, silakan pilih yang lain."
+        exit 1
+    fi
 done
 
-# 🔹 Konfigurasi IP Klien
-LAST_OCTET=$(grep "/32" /etc/wireguard/wg0.conf | awk '{print $3}' | cut -d '.' -f 4 | sort -n | tail -1)
-CLIENT_ADDRESS="10.66.66.$((LAST_OCTET+1))"
-CLIENT_ADDRESS_IPV6="fd42:42:42::$((LAST_OCTET+1))"
+echo -e "🌍 IPv4 Detected"
+ENDPOINT="${SERVER_PUB_IP}:${SERVER_PORT}"
 
-# 🔹 DNS Default
-CLIENT_DNS_1="1.1.1.1"
-CLIENT_DNS_2="1.0.0.1"
+for DOT_IP in {2..254}; do
+	DOT_EXISTS=$(grep -c "${SERVER_WG_IPV4::-1}${DOT_IP}" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+	if [[ ${DOT_EXISTS} == '0' ]]; then
+		break
+	fi
+done
+
+if [[ ${DOT_EXISTS} == '1' ]]; then
+    echo ""
+    echo -e "🚫 ⚠️ Subnet yang dikonfigurasi hanya mendukung 253 klien. ⚠️ 🚫"
+    echo ""
+    exit 1
+fi
+
+# Menentukan base IP dari alamat IPv4 server
+BASE_IP=$(echo "$SERVER_WG_IPV4" | awk -F '.' '{ print $1"."$2"."$3 }')
+DOT_IP=1 
+until [[ ${IPV4_EXISTS} == '0' ]]; do
+    CLIENT_WG_IPV4="${BASE_IP}.${DOT_IP}"
+    IPV4_EXISTS=$(grep -c "$CLIENT_WG_IPV4/32" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+    if [[ ${IPV4_EXISTS} == '0' ]]; then
+        break
+    else
+        DOT_IP=$((DOT_IP + 1))
+    fi
+done
+
+BASE_IP=$(echo "$SERVER_WG_IPV6" | awk -F '::' '{ print $1 }')
+DOT_IP=1
+until [[ ${IPV6_EXISTS} == '0' ]]; do
+    CLIENT_WG_IPV6="${BASE_IP}::${DOT_IP}"
+    IPV6_EXISTS=$(grep -c "${CLIENT_WG_IPV6}/128" "/etc/wireguard/${SERVER_WG_NIC}.conf")
+
+    if [[ ${IPV6_EXISTS} == '0' ]]; then
+        break
+    else
+        DOT_IP=$((DOT_IP + 1))
+    fi
+done
 
 # 🔹 Input Masa Aktif
-read -rp "📆 Expired (Days): " masaaktif
+read -p "📆 Expired (Days): " masaaktif
+hariini=$(date -d "0 days" +"%Y-%m-%d")
 exp=$(date -d "$masaaktif days" +"%Y-%m-%d")
 
 # 🔹 Generate Key Pair
@@ -57,18 +110,17 @@ CLIENT_PUB_KEY=$(echo "$CLIENT_PRIV_KEY" | wg pubkey)
 CLIENT_PRE_SHARED_KEY=$(wg genpsk)
 
 # 🔹 Buat file konfigurasi client
-CONFIG_PATH="$HOME/wg0-client-$CLIENT_NAME.conf"
-cat <<EOF > "$CONFIG_PATH"
+cat <<EOF > "$HOME/$SERVER_WG_NIC-client-$CLIENT_NAME.conf"
 [Interface]
 PrivateKey = $CLIENT_PRIV_KEY
-Address = $CLIENT_ADDRESS/32
+Address = $CLIENT_WG_IPV4/32,$CLIENT_WG_IPV6/128
 DNS = $CLIENT_DNS_1,$CLIENT_DNS_2
 
 [Peer]
 PublicKey = $SERVER_PUB_KEY
 PresharedKey = $CLIENT_PRE_SHARED_KEY
-Endpoint = $SERVER_PUB_IP:$portwg
-AllowedIPs = 0.0.0.0/0,::/0
+Endpoint = $ENDPOINT
+AllowedIPs = $ALLOWED_IPS
 EOF
 
 # 🔹 Tambahkan client ke konfigurasi server
@@ -76,29 +128,37 @@ echo -e "### Client $CLIENT_NAME $exp
 [Peer]
 PublicKey = $CLIENT_PUB_KEY
 PresharedKey = $CLIENT_PRE_SHARED_KEY
-AllowedIPs = $CLIENT_ADDRESS/32,$CLIENT_ADDRESS_IPV6/128" >> "/etc/wireguard/wg0.conf"
+AllowedIPs = $CLIENT_WG_IPV4}/32,$CLIENT_WG_IPV6/128" >> "/etc/wireguard/$SERVER_WG_NIC.conf"
 
 # 🔹 Restart WireGuard
-systemctl restart "wg-quick@wg0"
+systemctl restart "wg-quick@$SERVER_WG_NIC"
 
 # 🔹 Simpan konfigurasi client di folder public
-cp "$CONFIG_PATH" "/home/vps/public_html/$CLIENT_NAME.conf"
+cp "$HOME/$SERVER_WG_NIC-client-$CLIENT_NAME.conf" "/home/vps/public_html/$CLIENT_NAME.conf"
 
 clear
+echo -e "${GREEN}🔑 Generating Keys..."
+sleep 0.5
+echo -e "${BLUE}🔑 PrivateKey Generated"
+sleep 0.5
+echo -e "${CYAN}🔑 PublicKey Generated"
+sleep 0.5
+echo -e "${YELLOW}🔑 PresharedKey Generated"
+clear
+
 # 🔹 Menampilkan Informasi Akun WireGuard
 echo -e "${LIGHT}================================"
 echo -e "  🔰 ${CYAN}WIREGUARD CLIENT CONFIG${NC} 🔰"
 echo -e "================================"
 echo -e "👤 Username : ${GREEN}$CLIENT_NAME${NC}"
 echo -e "🌍 IP/Host  : ${GREEN}$MYIP${NC}"
-echo -e "🔹 Domain   : ${GREEN}$SERVER_PUB_IP${NC}"
+echo -e "🔹 Domain   : ${GREEN}$domain${NC}"
 echo -e "📡 Port     : ${GREEN}$portwg${NC}"
-echo -e "🕒 Created  : ${GREEN}$(date +"%Y-%m-%d")${NC}"
+echo -e "🕒 Created  : ${GREEN}$hariini${NC}"
 echo -e "📆 Expired  : ${RED}$exp${NC}"
 echo -e "================================"
 echo -e "🔗 Download Config:"
 echo -e "   ${BLUE}http://$MYIP:89/$CLIENT_NAME.conf${NC}"
 echo -e "================================"
 echo -e "🔰 Script Mod By ENVEEPAY"
-
-rm -f "$CONFIG_PATH"
+rm -f "/root/wg0-client-$CLIENT_NAME.conf"
